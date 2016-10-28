@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+
+import argparse
+
+from crc import CRC
+from intelhex import IntelHex
+from memory import Memory
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description = 'Compute checksum of binary image of EPROM')
+
+    fmt_group = parser.add_mutually_exclusive_group()
+    fmt_group.add_argument('--binary', action='store_const',
+                           dest='inputformat',
+                           const='binary',
+                           help = 'input file format is raw binary (default)')
+    fmt_group.add_argument('--hex', action='store_const',
+                           dest='inputformat',
+                           const='hex',
+                           help = 'input file format is Intel hex')
+
+    headings_group = parser.add_mutually_exclusive_group()
+    headings_group.add_argument('--headings', action='store_true',
+                                default=True,
+                                help = 'print column headings (default)')
+    headings_group.add_argument('--noheadings', action='store_false',
+                                dest='headings',
+                                help = 'do not print column headings')
+
+    fn_group = parser.add_mutually_exclusive_group()
+    fn_group.add_argument('--fn', action = 'store_true', dest='print_fn',
+                          default = True,
+                          help = 'print filename (default)')
+    fn_group.add_argument('--nofn', action = 'store_false', dest='print_fn',
+                          help = 'do not print filename')
+
+    csum_group = parser.add_mutually_exclusive_group()
+    csum_group.add_argument('--csum',   action='store_true',
+                            default=True,
+                            help = 'compute simple checksum, as used by EPROM programmers (default)')
+    csum_group.add_argument('--nocsum', action='store_false', dest='csum',
+                            help = 'do not compute simple checksum')
+
+    crc_group = parser.add_mutually_exclusive_group()
+    crc_group.add_argument('--crc32',   action='store_true',
+                           default=True,
+                           help = 'compute CRC32 (default)')
+    crc_group.add_argument('--nocrc32', action='store_false', dest='crc32',
+                            help = 'do not compute CRC32')
+
+    parser.add_argument('image',
+                    type = argparse.FileType('rb'),
+		    nargs = '+')
+
+    args = parser.parse_args()
+
+    if args.inputformat is None:
+        args.inputformat = 'binary'
+
+    print(args)
+    
+    crc = CRC(CRC.crc32_param)
+    crc.make_table()
+
+    max_name_len = max([len(f.name) for f in args.image])
+    if args.headings:
+        max_name_len = max(max_name_len, len('filename'))
+
+    if args.headings:
+        s = []
+        if args.print_fn:
+            s += ['%-*s' % (max_name_len, 'filename')]
+        if args.csum:
+            s += ['checksum']
+        if args.crc32:
+            s += ['CRC32']
+        print(' '.join(s))
+        s = []
+        if args.print_fn:
+            s += ['-' * max_name_len]
+        if args.csum:
+            s += ['-' * 8]
+        if args.crc32:
+            s += ['-' * 8]
+        print(' '.join(s))
+
+    for f in args.image:
+        if args.inputformat == 'binary':
+            memory = Memory(data = f.read())
+        elif args.inputformat == 'hex':
+            memory = IntelHex().read(f, load_addr = 0)
+        else:
+            raise Exception('unknown input format')
+
+        s = []
+        if args.print_fn:
+            s += ['%-*s' % (max_name_len, f.name)]
+        if args.csum:
+            s += ['%08x' % sum(memory)]
+        if args.crc32:
+            s += ['%08x' % crc.crc(memory)]
+        print(' '.join(s))
+
